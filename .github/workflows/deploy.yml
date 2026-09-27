@@ -1,0 +1,53 @@
+name: Desplegar aplicación con Ansible
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "ansible/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: despliegue-aplicacion
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+
+    steps:
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar inventario para Ansible
+        shell: bash
+        env:
+          EC2_HOST: ${{ vars.EC2_HOST }}
+        run: |
+          set -euo pipefail
+
+          test -n "$EC2_HOST"
+          test -r "$HOME/.ssh/ec2_ansible_https.pem"
+          ssh-keygen -F "$EC2_HOST" > /dev/null
+
+          printf '[app]\nservidor_app ansible_host=%s ansible_user=ubuntu ansible_ssh_private_key_file=%s/.ssh/ec2_ansible_https.pem\n' \
+            "$EC2_HOST" "$HOME" > inventory.ini
+
+      - name: Comprobar sintaxis del playbook
+        run: ansible-playbook -i inventory.ini ansible/deploy.yml --syntax-check
+
+      - name: Desplegar en EC2
+        run: ansible-playbook -i inventory.ini ansible/deploy.yml
+
+      - name: Comprobar la web pública
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 6 --retry-delay 5 \
+            https://app.jimmyto09.site | grep -F 'Proyecto final DevOps'
