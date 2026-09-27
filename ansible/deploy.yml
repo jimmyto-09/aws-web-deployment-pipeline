@@ -56,4 +56,4 @@
 
     - name: Verificar que se publicó nuestra versión
       ansible.builtin.assert:
-        that: "'Versión 1' in respuesta_http.content"
+        that: "'Proyecto final DevOps' in respuesta_http.content"
