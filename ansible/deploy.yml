@@ -1,0 +1,59 @@
+---
+- name: Desplegar la aplicación web en EC2
+  hosts: app
+  become: true
+  vars:
+    app_dir: /opt/proyecto-final-devops
+  tasks:
+    - name: Instalar Docker y Docker Compose
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+        update_cache: true
+
+    - name: Iniciar Docker y habilitarlo al arrancar
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Crear directorio de la aplicación
+      ansible.builtin.file:
+        path: "{{ app_dir }}/site"
+        state: directory
+        mode: "0755"
+
+    - name: Copiar página web
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../app/index.html"
+        dest: "{{ app_dir }}/site/index.html"
+        mode: "0644"
+
+    - name: Copiar configuración Compose
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../app/compose.yaml"
+        dest: "{{ app_dir }}/compose.yaml"
+        mode: "0644"
+
+    - name: Arrancar contenedor Nginx
+      ansible.builtin.command: docker compose up -d
+      args:
+        chdir: "{{ app_dir }}"
+      register: compose_result
+      changed_when: "'Created' in compose_result.stderr or 'Started' in compose_result.stderr or 'Recreated' in compose_result.stderr"
+
+    - name: Comprobar respuesta HTTP dentro de la EC2
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        status_code: 200
+        return_content: true
+      register: respuesta_http
+      until: respuesta_http.status == 200
+      retries: 12
+      delay: 5
+
+    - name: Verificar que se publicó nuestra versión
+      ansible.builtin.assert:
+        that: "'Versión 1' in respuesta_http.content"
